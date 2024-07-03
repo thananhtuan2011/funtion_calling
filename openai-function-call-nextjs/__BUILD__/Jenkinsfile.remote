@@ -1,0 +1,56 @@
+pipeline {
+    environment {
+        REGISTRY_HOST = "registry.jee.vn"
+        REGISTRY_PUBLISHER = "dps"
+        REGISTRY_CRED = "registry"
+        PROJECT_NAME = "functioncalls"
+        DOMAIN = "jee.vn"
+        SUBDOMAIN = "functioncalls"
+        STACK_NAME = "dpscore"
+
+        NODE_ENV = "production"
+
+        service = ""
+        OPENAI_API_KEY="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"
+    }
+    agent any
+    stages {
+        stage('Install Package') {
+            steps {
+                sh 'apt-get update'
+                sh 'apt-get install -y gettext-base'
+            }
+        }
+
+        stage('Clone repository') {
+            steps {
+                script {
+                    checkout scm
+                }
+            }
+        }
+        stage("Install kubectl"){
+            steps {
+                sh """
+                    curl -LO https://storage.googleapis.com/kubernetes-release/release/`curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt`/bin/linux/amd64/kubectl
+                    chmod +x ./kubectl
+                    mv ./kubectl /usr/local/bin/kubectl
+                    kubectl version --client
+                """
+            }
+        }
+
+        stage('Deploy to Cluster') {
+            steps {
+                script {
+                    docker.withRegistry("https://${REGISTRY_HOST}", REGISTRY_CRED) {
+                        dir("openai-function-call-nextjs/__BUILD__"){
+                            sh "envsubst < deploy.yaml | kubectl apply -f -"
+                            sh "kubectl rollout restart -n dpscore deployment chatchroma"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
